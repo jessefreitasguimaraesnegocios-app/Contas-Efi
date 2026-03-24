@@ -1,6 +1,10 @@
 /**
  * Cliente HTTP para API Abertura de Contas Efí (OAuth2 + mTLS).
  * @see https://dev.efipay.com.br/docs/api-abertura-de-contas/credenciais
+ *
+ * No Supabase Edge, rustls costuma falhar contra abrircontas-*.api.efipay.com.br.
+ * Configure EFI_REGISTRATION_MTLS_PROXY_URL + EFI_REGISTRATION_MTLS_PROXY_SECRET
+ * apontando para o proxy Node na Vercel (`api/efi-abertura-mtls-proxy.ts`).
  */
 
 export type EfiRegistrationEnv = "homologation" | "production";
@@ -32,9 +36,30 @@ function getIntegratorCredentials(env: EfiRegistrationEnv) {
 function assertMtlsReady(certPem: string, keyPem: string) {
   if (!certPem || !keyPem) {
     throw new Error(
-      "Certificado mTLS ausente: defina EFI_REGISTRATION_CERT_PEM_* e EFI_REGISTRATION_KEY_PEM_* (PEM, use \\n para quebras de linha nos secrets)."
+      "Certificado mTLS ausente: defina EFI_REGISTRATION_CERT_PEM_* e EFI_REGISTRATION_KEY_PEM_* (PEM, use \\n para quebras de linha nos secrets), ou use o proxy Vercel (EFI_REGISTRATION_MTLS_PROXY_URL + SECRET)."
     );
   }
+}
+
+function proxyConfigured(): boolean {
+  const u = Deno.env.get("EFI_REGISTRATION_MTLS_PROXY_URL")?.trim();
+  const s = Deno.env.get("EFI_REGISTRATION_MTLS_PROXY_SECRET")?.trim();
+  return !!(u && s);
+}
+
+async function registrationProxyFetch(
+  payload: Record<string, unknown>
+): Promise<Response> {
+  const url = Deno.env.get("EFI_REGISTRATION_MTLS_PROXY_URL")!.trim();
+  const secret = Deno.env.get("EFI_REGISTRATION_MTLS_PROXY_SECRET")!.trim();
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-efi-mtls-proxy-secret": secret,
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 const tokenCache = new Map<string, { accessToken: string; expMs: number }>();
@@ -44,24 +69,43 @@ export function createMtlsClient(certPem: string, keyPem: string): Deno.HttpClie
   return Deno.createHttpClient({
     certChain: certPem,
     privateKey: keyPem,
-    // Evita HTTP/2: alguns servidores fecham a conexão cedo com rustls/h2 no Edge.
     http2: false,
   });
 }
 
 export async function getRegistrationAccessToken(env: EfiRegistrationEnv): Promise<string> {
-  const { clientId, clientSecret, certPem, keyPem } = getIntegratorCredentials(env);
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      `Credenciais integradora ausentes para ${env}: EFI_REGISTRATION_CLIENT_ID_* e EFI_REGISTRATION_CLIENT_SECRET_*`
-    );
-  }
-
   const cacheKey = env;
   const now = Date.now();
   const hit = tokenCache.get(cacheKey);
   if (hit && hit.expMs > now + 30_000) {
     return hit.accessToken;
+  }
+
+  if (proxyConfigured()) {
+    const res = await registrationProxyFetch({ kind: "oauth", env });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        `OAuth Efi Abertura de Contas falhou (${res.status}): ${JSON.stringify(data)}`
+      );
+    }
+    const accessToken = (data as { access_token?: string }).access_token;
+    const expiresIn = Number((data as { expires_in?: number }).expires_in ?? 3600);
+    if (!accessToken) {
+      throw new Error(`Resposta OAuth sem access_token: ${JSON.stringify(data)}`);
+    }
+    tokenCache.set(cacheKey, {
+      accessToken,
+      expMs: now + Math.max(60, expiresIn - 120) * 1000,
+    });
+    return accessToken;
+  }
+
+  const { clientId, clientSecret, certPem, keyPem } = getIntegratorCredentials(env);
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      `Credenciais integradora ausentes para ${env}: EFI_REGISTRATION_CLIENT_ID_* e EFI_REGISTRATION_CLIENT_SECRET_*`
+    );
   }
 
   const client = createMtlsClient(certPem, keyPem);
@@ -111,9 +155,43 @@ export async function registrationFetch(
   path: string,
   init: RequestInit & { skipAuth?: boolean } = {}
 ): Promise<Response> {
+  const pathOnly = path.startsWith("/") ? path : `/${path}`;
+
+  if (proxyConfigured()) {
+    const headers = new Headers(init.headers);
+    if (!init.skipAuth) {
+      const token = await getRegistrationAccessToken(env);
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+    if (init.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const headerObj: Record<string, string> = {};
+    headers.forEach((v, k) => {
+      headerObj[k] = v;
+    });
+    const method = (init.method || "GET").toString().toUpperCase();
+    const bodyStr =
+      typeof init.body === "string"
+        ? init.body
+        : init.body == null
+          ? undefined
+          : String(init.body);
+
+    return registrationProxyFetch({
+      kind: "fetch",
+      env,
+      path: pathOnly,
+      method,
+      headers: headerObj,
+      body: bodyStr,
+    });
+  }
+
   const { certPem, keyPem } = getIntegratorCredentials(env);
   const client = createMtlsClient(certPem, keyPem);
-  const url = `${getRegistrationBaseUrl(env)}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = `${getRegistrationBaseUrl(env)}${pathOnly}`;
 
   const headers = new Headers(init.headers);
   if (!init.skipAuth) {

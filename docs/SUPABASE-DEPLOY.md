@@ -50,9 +50,25 @@ npx supabase secrets set EFI_REGISTRATION_CLIENT_SECRET_PRODUCTION="..."
 npx supabase secrets set EFI_REGISTRATION_CERT_PEM_PRODUCTION="..."
 npx supabase secrets set EFI_REGISTRATION_KEY_PEM_PRODUCTION="..."
 
+# Proxy mTLS (recomendado): Edge/Deno falha rustls com abrircontas-*.api.efipay.com.br
+# URL pública da rota Vercel + o MESMO segredo configurado nas env vars da Vercel.
+npx supabase secrets set EFI_REGISTRATION_MTLS_PROXY_URL="https://SEU-DOMINIO.vercel.app/api/efi-abertura-mtls-proxy"
+npx supabase secrets set EFI_REGISTRATION_MTLS_PROXY_SECRET="(string longa e aleatória)"
+
 # Opcional: validação do webhook de cadastro Efi
 npx supabase secrets set EFI_REGISTRATION_WEBHOOK_SECRET="..."
 ```
+
+### Proxy na Vercel (`api/efi-abertura-mtls-proxy.ts`)
+
+No painel **Vercel → Settings → Environment Variables** (Production), defina:
+
+- `EFI_REGISTRATION_MTLS_PROXY_SECRET` — **igual** ao secret do Supabase acima.
+- `EFI_REGISTRATION_CLIENT_ID_HOMOLOG`, `EFI_REGISTRATION_CLIENT_SECRET_HOMOLOG`
+- `EFI_REGISTRATION_CERT_PEM_HOMOLOG`, `EFI_REGISTRATION_KEY_PEM_HOMOLOG` (mesmo formato `\n` que no Supabase)
+- Repita `*_PRODUCTION` se usar produção.
+
+Faça **redeploy** na Vercel após salvar as variáveis. Com o proxy ativo, as Edge Functions podem continuar com os PEM no Supabase (fallback local) ou você pode mantê-los só na Vercel — desde que `EFI_REGISTRATION_MTLS_PROXY_URL` e `SECRET` estejam definidos no Supabase, todo tráfego mTLS para Abertura de Contas passa pelo Node.
 
 **PEM em uma linha:** use `\n` onde haveria quebra de linha, ou rode várias vezes `secrets set` lendo de arquivo (veja script).
 
