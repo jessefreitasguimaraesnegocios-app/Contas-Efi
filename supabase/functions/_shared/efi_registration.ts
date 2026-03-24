@@ -44,6 +44,8 @@ export function createMtlsClient(certPem: string, keyPem: string): Deno.HttpClie
   return Deno.createHttpClient({
     certChain: certPem,
     privateKey: keyPem,
+    // Evita HTTP/2: alguns servidores fecham a conexão cedo com rustls/h2 no Edge.
+    http2: false,
   });
 }
 

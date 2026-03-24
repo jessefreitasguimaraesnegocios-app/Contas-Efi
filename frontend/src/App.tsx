@@ -39,6 +39,28 @@ type EfiConta = {
   apps?: { code: string; name: string } | null;
 };
 
+/** Corpo JSON da Edge Function (ex.: { error, details }) quando status ≠ 2xx. */
+async function messageFromEdgeFunction(
+  error: unknown,
+  invokeResponse?: Response | null
+): Promise<string> {
+  const fallback = error instanceof Error ? error.message : 'Erro ao chamar função';
+  if (!invokeResponse) return fallback;
+  try {
+    const ct = (invokeResponse.headers.get('Content-Type') || '').toLowerCase();
+    if (!ct.includes('application/json')) return fallback;
+    const j = (await invokeResponse.json()) as { error?: string; details?: unknown };
+    if (j?.error && typeof j.error === 'string') {
+      if (j.details === undefined || j.details === null) return j.error;
+      const extra = typeof j.details === 'string' ? j.details : JSON.stringify(j.details);
+      return `${j.error} — ${extra.slice(0, 600)}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return fallback;
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -236,14 +258,14 @@ export default function App() {
               monthlyFeeCents: Math.round(Number(form.monthlyFee) * 100),
             };
 
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('efi-create-conta-simplificada', {
-        body,
-        headers: { 'x-client-info': 'plataforma-subcontas-efi' },
-      });
+      const { data: fnData, error: fnError, response: fnRes } =
+        await supabase.functions.invoke('efi-create-conta-simplificada', {
+          body,
+          headers: { 'x-client-info': 'plataforma-subcontas-efi' },
+        });
 
       if (fnError) {
-        const msg = fnError.message || 'Erro ao chamar Edge Function';
-        throw new Error(msg);
+        throw new Error(await messageFromEdgeFunction(fnError, fnRes));
       }
       const data = fnData as { error?: string; details?: unknown; success?: boolean };
       if (data?.error) {
@@ -281,11 +303,11 @@ export default function App() {
     setSyncingId(id);
     setMessage(null);
     try {
-      const { data, error } = await supabase.functions.invoke('efi-sync-credentials', {
+      const { data, error, response: fnRes } = await supabase.functions.invoke('efi-sync-credentials', {
         body: { id },
         headers: { 'x-client-info': 'plataforma-subcontas-efi' },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(await messageFromEdgeFunction(error, fnRes));
       const d = data as { error?: string; details?: unknown };
       if (d?.error) throw new Error(`${d.error} ${d.details ? JSON.stringify(d.details).slice(0, 400) : ''}`);
       setMessage({ type: 'ok', text: 'Credenciais sincronizadas.' });
@@ -301,11 +323,11 @@ export default function App() {
     setSyncingId(id);
     setMessage(null);
     try {
-      const { data, error } = await supabase.functions.invoke('efi-sync-certificado', {
+      const { data, error, response: fnRes } = await supabase.functions.invoke('efi-sync-certificado', {
         body: { id },
         headers: { 'x-client-info': 'plataforma-subcontas-efi' },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(await messageFromEdgeFunction(error, fnRes));
       const d = data as { error?: string };
       if (d?.error) throw new Error(d.error);
       setMessage({ type: 'ok', text: 'Certificado .p12 (base64) salvo no banco.' });
@@ -324,11 +346,11 @@ export default function App() {
     if (!ok) return;
     setMessage(null);
     try {
-      const { data, error } = await supabase.functions.invoke('efi-delete-conta', {
+      const { data, error, response: fnRes } = await supabase.functions.invoke('efi-delete-conta', {
         body: { id },
         headers: { 'x-client-info': 'plataforma-subcontas-efi' },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(await messageFromEdgeFunction(error, fnRes));
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
       setMessage({ type: 'ok', text: 'Conta arquivada.' });
       await loadContas();
