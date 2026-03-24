@@ -9,3 +9,6 @@ supabase/.temp
 supabase/.branches
 
 .vercel
+
+# Contém PEM/chave privada — nunca versionar
+docs/vercel-efi-env-VALORES-CONFIDENCIAIS.md
