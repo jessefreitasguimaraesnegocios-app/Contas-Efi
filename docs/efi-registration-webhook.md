@@ -20,6 +20,24 @@ Exemplo de evento de conta aberta:
 - `POST /v1/webhook` com corpo `{ "webhookUrl": "https://seu-dominio/..." }`
 - Escopos: `gn.registration.webhook.write` / `read`
 
+### Cadastro via API a partir do seu PC (recomendado)
+
+O runtime das Edge Functions (Deno) pode falhar em TLS ao falar com `abrircontas*.api.efipay.com.br` em alguns cenários (`unexpected-eof` / rustls). Por isso o caminho mais confiável é rodar o script local com o mesmo `.p12` e `client_id` / `client_secret` da homologação ou produção:
+
+```bash
+python scripts/register-abertura-webhook.py --env homolog \
+  --p12 "caminho/homologacao.p12" \
+  --client-id SEU_CLIENT_ID \
+  --client-secret SEU_CLIENT_SECRET \
+  --webhook-url "https://contas-efi.vercel.app/api/efi-registration-webhook-proxy?hmac=SEU_EFI_WEBHOOK_HMAC"
+```
+
+Repita com `--env production` e o `.p12` de produção quando for o caso.
+
+### Edge Function opcional (`efi-setup-abertura-webhook`)
+
+Existe função que chama `POST /v1/webhook` usando os secrets do Supabase. Proteção: header `x-efi-setup-token` igual ao secret `EFI_SETUP_ABERTURA_WEBHOOK` (definir com `npx supabase secrets set`). Se a chamada falhar com erro de TLS, use o script Python acima.
+
 ## Integração com Supabase Edge Function
 
 A URL pública `.../functions/v1/efi-registration-webhook` **não termina mTLS do lado da Efí sozinha**.

@@ -28,7 +28,8 @@ $functions = @(
     "efi-sync-certificado",
     "efi-list-contas",
     "efi-delete-conta",
-    "efi-registration-webhook"
+    "efi-registration-webhook",
+    "efi-setup-abertura-webhook"
 )
 
 foreach ($fn in $functions) {

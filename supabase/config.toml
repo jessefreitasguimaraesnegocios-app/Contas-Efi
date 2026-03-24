@@ -20,6 +20,9 @@ verify_jwt = false
 [functions.efi-registration-webhook]
 verify_jwt = false
 
+[functions.efi-setup-abertura-webhook]
+verify_jwt = false
+
 [api]
 enabled = true
 port = 54321
