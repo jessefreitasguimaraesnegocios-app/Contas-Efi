@@ -1,0 +1,9 @@
+.DS_Store
+.env
+.env.local
+*.p12
+.tmp/
+frontend/node_modules
+frontend/dist
+supabase/.temp
+supabase/.branches

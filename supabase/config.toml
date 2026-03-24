@@ -1,0 +1,33 @@
+# Supabase local / deploy — project ref: kxtuxraukhpgyhckqoun
+# Se `npx supabase link` falhar com Forbidden: `npx supabase login` com a conta dona do projeto.
+# (Não use [project] neste config.toml — CLI 2.83 rejeita.)
+
+[functions.efi-create-conta-simplificada]
+verify_jwt = false
+
+[functions.efi-sync-credentials]
+verify_jwt = false
+
+[functions.efi-sync-certificado]
+verify_jwt = false
+
+[functions.efi-list-contas]
+verify_jwt = false
+
+[functions.efi-delete-conta]
+verify_jwt = false
+
+[functions.efi-registration-webhook]
+verify_jwt = false
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+
+[studio]
+enabled = true
+port = 54323
