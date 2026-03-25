@@ -214,6 +214,8 @@ export async function registrationFetch(
 
 /** Escopos padrão (exemplo oficial Efi; habilite extras no app Efí se precisar de split, etc.) */
 export const DEFAULT_ESCOPOS_INTEGRADOS = [
+  "gn.registration.write",
+  "gn.registration.read",
   "cob.write",
   "cob.read",
   "pix.write",

@@ -124,10 +124,26 @@ serve(async (req) => {
       body: JSON.stringify(payload),
     });
 
-    const efiData = await efiRes.json().catch(() => ({}));
+    const efiText = await efiRes.text();
+    let efiData = {};
+    try {
+      efiData = efiText ? JSON.parse(efiText) : {};
+    } catch {
+      efiData = { corpoNaoJson: efiText.slice(0, 2000) };
+    }
+
     if (!efiRes.ok) {
+      const hint401 =
+        efiRes.status === 401
+          ? "401 vem da API Efí (TLS/mTLS já funcionou). Na Vercel, use Client Id + Secret + PEM do MESMO app e MESMO ambiente (HOMOLOG). No painel Efí, confira app de Abertura de Contas e escopos liberados."
+          : undefined;
       return new Response(
-        JSON.stringify({ error: "Erro ao solicitar conta simplificada Efi", details: efiData }),
+        JSON.stringify({
+          error: "Erro ao solicitar conta simplificada Efi",
+          efiHttpStatus: efiRes.status,
+          details: efiData,
+          ...(hint401 ? { hint: hint401 } : {}),
+        }),
         { status: efiRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

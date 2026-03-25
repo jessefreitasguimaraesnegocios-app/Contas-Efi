@@ -49,11 +49,21 @@ async function messageFromEdgeFunction(
   try {
     const ct = (invokeResponse.headers.get('Content-Type') || '').toLowerCase();
     if (!ct.includes('application/json')) return fallback;
-    const j = (await invokeResponse.json()) as { error?: string; details?: unknown };
+    const j = (await invokeResponse.json()) as {
+      error?: string;
+      details?: unknown;
+      hint?: string;
+      efiHttpStatus?: number;
+    };
     if (j?.error && typeof j.error === 'string') {
-      if (j.details === undefined || j.details === null) return j.error;
+      const statusBit =
+        typeof j.efiHttpStatus === 'number' ? `[HTTP ${j.efiHttpStatus}] ` : '';
+      if (j.details === undefined || j.details === null) {
+        return `${statusBit}${j.error}${j.hint ? ` — ${j.hint}` : ''}`;
+      }
       const extra = typeof j.details === 'string' ? j.details : JSON.stringify(j.details);
-      return `${j.error} — ${extra.slice(0, 600)}`;
+      const tail = extra === '{}' && j.hint ? j.hint : extra.slice(0, 800);
+      return `${statusBit}${j.error} — ${tail}`;
     }
   } catch {
     /* ignore */
